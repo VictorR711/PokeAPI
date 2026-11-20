@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokédex</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@6.0.0-alpha.1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-B/GM4XqrwHnWXNOWMbloTmrYXZg10cakYGmpfsR/bbzQ6JAJI4ihuyADKLnBgrCe" crossorigin="anonymous">
+    <style>
+        .sprite-ver {
+            cursor: pointer;
+        }
+
+        #poke-dialog {
+            width: 90vw;
+            max-width: 700px;
+        }
+
+        #poke-dialog .dialog-body {
+            max-height: 65vh;
+            overflow: auto;
+        }
+
+        #evoluciones {
+            overflow-x: auto;
+            padding-bottom: 10px;
+        }
+
+        .tarjeta img {
+            max-width: 72px;
+            max-height: 72px;
+            object-fit: contain;
+        }
+
+        .flecha {
+            align-self: flex-start;
+            margin-top: 25px;
+        }
+
+        .cadena {
+            display: flex;
+            align-items: flex-start;
+            justify-content: flex-start;
+            flex-wrap: nowrap;
+            gap: 10px;
+            width: max-content;
+            margin: 0 auto;
+        }
+
+        .tarjeta img {
+            max-width: 96px;
+            max-height: 96px;
+            object-fit: contain;
+        }
+
+
+        .etapa {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tarjeta {
+            text-align: center;
+            border: 2px solid transparent;
+            border-radius: 8px;
+            padding: 4px;
+        }
+
+        .tarjeta.actual {
+            border-color: gold;
+        }
+
+        .tarjeta.mega {
+            border-color: #c0392b;
+        }
+
+        .flecha {
+            font-size: 2rem;
+        }
+
+        .flecha-abajo {
+            font-size: 1.5rem;
+            color: #c0392b;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="row my-5">
+            <div class="col-4 offset-8 md:col-1 md:offset-11">
+                <button id="btn-agregar" class="button theme-primary btn-solid btn-styled">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-plus" viewBox="0 0 16 16">
+                        <path d="M8 4a.5.5 0 0 1 .5.5v3h3a.5.5 0 0 1 0 1h-3v3a.5.5 0 0 1-1 0v-3h-3a.5.5 0 0 1 0-1h3v-3A.5.5 0 0 1 8 4"/>
+                    </svg>
+                    Agregar
+                </button>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+
+                <table class="table table-striped table-hover mt-5">
+                    <thead>
+                        <tr>
+                            <th>Número</th>
+                            <th>Nombre</th>
+                            <th>Sprite</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+
+                    </tbody>
+
+                    <tfoot>
+                        <tr>
+                            <th>Número</th>
+                            <th>Nombre</th>
+                            <th>Sprite</th>
+                        </tr>
+                    </tfoot>
+                </table>
+
+            </div>
+        </div>
+    </div>
+
+    <dialog class="dialog" id="form-dialog">
+        <div class="dialog-header">
+            <h1 class="dialog-title">Formulario</h1>
+            <button type="button" data-bs-dismiss="dialog" aria-label="Cerrar" class="btn-close"></button>
+        </div>
+
+        <div class="dialog-body">
+            <div class="form-field">
+                <label for="inp-search" class="form-label">
+                    Buscar:
+                </label>
+                <input type="text" id="inp-search" class="form-control" placeholder="Buscar por nombre o número">
+            </div>
+        </div>
+
+        <div class="dialog-footer">
+            <button class="btn-solid theme-secondary" data-bs-dismiss="dialog">
+                Cancelar
+            </button>
+            <button class="btn-solid theme-primary" id="btn-buscar">
+                Buscar
+            </button>
+        </div>
+    </dialog>
+
+    <script>
+        const POKEAPI_URL = 'https://pokeapi.co/api/v2/pokemon/'
+        const SPECIES_URL = 'https://pokeapi.co/api/v2/pokemon-species/'
+        const CRY_URL = 'https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/'
+        const STORAGE_KEY = 'pokemones'
+
+        let bsDialog
+        let bsPokeDialog
+        let pokemones = []
+
+        function init () {
+
+            crearDialogoDetalle()
+            agregarColumnaDescripcion()
+
+            bsDialog = new bootstrap.Dialog('#form-dialog')
+            bsPokeDialog = new bootstrap.Dialog('#poke-dialog')
+
+            document.querySelector('#btn-agregar')
+              .addEventListener('click', () => bsDialog.show())
+
+            document.querySelector('#btn-buscar')
+              .addEventListener('click', buscar)
+
+            document.querySelector('#inp-search')
+              .addEventListener('keydown', evt => {
+                  if (evt.key === 'Enter') buscar(evt)
+              })
+
+            pokemones = cargarDatos()
+            render(pokemones)
+            completarDescripciones()
+        }
+
+        function agregarColumnaDescripcion () {
+            const filas = document.querySelectorAll('thead tr, tfoot tr')
+
+            for (let i = 0; i < filas.length; i++) {
+                const th = document.createElement('th')
+                th.textContent = 'Descripción'
+
+                filas[i].insertBefore(th, filas[i].lastElementChild)
+            }
+        }
+
+        function pedir (url) {
+            return new Promise((resolve, reject) => {
+                fetch(url)
+                  .then(respuesta => {
+                      if (!respuesta.ok) throw new Error('No se encontró información')
+                      return respuesta.json()
+                  })
+                  .then(datos => resolve(datos))
+                  .catch(error => reject(error))
+            })
+        }
+
+        function buscar (evt) {
+            evt.preventDefault()
+
+            const input = document.querySelector('#inp-search')
+            const poke = input.value.trim().toLowerCase()
+
+            if (!poke) return
+
+            pedir(POKEAPI_URL + poke)
+              .then(datos => {
+                  return pedir(SPECIES_URL + datos.id)
+                    .then(especie => {
+                        const descripcion = buscarDescripcion(especie.flavor_text_entries)
+                        agregar(datos, descripcion)
+                        input.value = ''
+                        bsDialog.hide()
+                    })
+              })
+              .catch(error => {
+                  alert(error.message)
+              })
+        }
+
+        function guardarDatos () {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(pokemones))
+        }
+
+        function cargarDatos () {
+            const texto = localStorage.getItem(STORAGE_KEY)
+
+            if (texto === null) {
+                return []
+            }
+
+            return JSON.parse(texto)
+        }
+
+        function completarDescripciones () {
+            for (let i = 0; i < pokemones.length; i++) {
+                const poke = pokemones[i]
+
+                if (!poke.description) {
+                    pedir(SPECIES_URL + poke.id)
+                      .then(especie => {
+                          poke.description = buscarDescripcion(especie.flavor_text_entries)
+                          guardarDatos()
+                          render(pokemones)
+                      })
+                      .catch(() => {})
+                }
+            }
+        }
+
+        function yaExiste (id) {
+            for (let i = 0; i < pokemones.length; i++) {
+                if (pokemones[i].id === id) {
+                    return true
+                }
+            }
+
+            return false
+        }
+
+        function agregar (datos, descripcion) {
+
+            if (yaExiste(datos.id)) {
+                throw new Error('Ese Pokémon ya está en la tabla')
+            }
+
+            const nuevo = {
+                id: datos.id,
+                name: datos.name,
+                sprite: datos.sprites.front_default,
+                description: descripcion
+            }
+
+            pokemones.push(nuevo)
+            guardarDatos()
+            render(pokemones)
+        }
+
+        function eliminar (id) {
+            const restantes = []
+
+            for (let i = 0; i < pokemones.length; i++) {
+                if (pokemones[i].id !== id) {
+                    restantes.push(pokemones[i])
+                }
+            }
+
+            pokemones = restantes
+            guardarDatos()
+            render(pokemones)
+        }
+
+        function crearDialogoDetalle () {
+            const dialogo = document.createElement('dialog')
+            dialogo.className = 'dialog'
+            dialogo.id = 'poke-dialog'
+
+            dialogo.innerHTML = `
+                <div class="dialog-header">
+                    <h1 class="dialog-title">Pokémon</h1>
+                    <button type="button" data-bs-dismiss="dialog" aria-label="Cerrar" class="btn-close"></button>
+                </div>
+
+                <div class="dialog-body">
+                    <h1 id="poke-title"></h1>
+                    <img id="poke-img">
+                    <audio id="poke-sound" controls></audio>
+                    <p id="entry"></p>
+                    <h2>Cadena evolutiva</h2>
+                    <div id="evoluciones"></div>
+                </div>
+
+                <div class="dialog-footer">
+                    <button type="button" class="btn-solid theme-primary" data-bs-dismiss="dialog">
+                        Aceptar
+                    </button>
+                </div>
+            `
+
+            document.body.appendChild(dialogo)
+        }
+
+        function ver (poke) {
+            const entry = document.querySelector('#entry')
+            const evoluciones = document.querySelector('#evoluciones')
+
+            document.querySelector('#poke-title').textContent = '#' + poke.id + ' ' + poke.name
+            document.querySelector('#poke-img').src = poke.sprite
+            document.querySelector('#poke-img').alt = poke.name
+
+            const audio = document.querySelector('#poke-sound')
+            audio.src = CRY_URL + poke.id + '.ogg'
+            audio.play().catch(() => {})
+
+            entry.textContent = poke.description || 'Cargando descripción...'
+            evoluciones.textContent = 'Cargando evoluciones...'
+
+            bsPokeDialog.show()
+
+            pedir(SPECIES_URL + poke.id)
+              .then(especie => {
+                  if (!poke.description) {
+                      entry.textContent = buscarDescripcion(especie.flavor_text_entries)
+                  }
+
+                  return pedir(especie.evolution_chain.url)
+              })
+              .then(cadena => {
+                  const etapas = obtenerEtapas(cadena.chain)
+                  return cargarEtapas(etapas)
+              })
+              .then(etapas => {
+                  renderEvoluciones(etapas, poke.id)
+              })
+              .catch(error => {
+                  evoluciones.textContent = error.message
+              })
+        }
+
+        function buscarDescripcion (entradas) {
+            for (let i = 0; i < entradas.length; i++) {
+                if (entradas[i].language.name === 'es') {
+                    return limpiarTexto(entradas[i].flavor_text)
+                }
+            }
+
+            for (let i = 0; i < entradas.length; i++) {
+                if (entradas[i].language.name === 'en') {
+                    return limpiarTexto(entradas[i].flavor_text)
+                }
+            }
+
+            return 'Sin descripción disponible'
+        }
+
+        function limpiarTexto (texto) {
+            return texto.replace(/\s+/g, ' ')
+        }
+
+        function obtenerEtapas (cadena) {
+            const etapas = []
+            let actuales = [cadena]
+
+            while (actuales.length > 0) {
+                const etapa = []
+                let siguientes = []
+
+                for (let i = 0; i < actuales.length; i++) {
+                    const nodo = actuales[i]
+
+                    const partes = nodo.species.url.split('/')
+                    const id = partes[partes.length - 2]
+
+                    etapa.push({ id: id, name: nodo.species.name })
+
+                    siguientes = siguientes.concat(nodo.evolves_to)
+                }
+
+                etapas.push(etapa)
+                actuales = siguientes
+            }
+
+            return etapas
+        }
+
+        function cargarEtapas (etapas) {
+            const promesas = []
+
+            for (let i = 0; i < etapas.length; i++) {
+                for (let j = 0; j < etapas[i].length; j++) {
+                    promesas.push(cargarItem(etapas[i][j]))
+                }
+            }
+
+            return Promise.all(promesas).then(() => etapas)
+        }
+
+        function cargarItem (item) {
+            return Promise.all([
+                pedir(POKEAPI_URL + item.id),
+                pedir(SPECIES_URL + item.id)
+            ])
+              .then(resultados => {
+                  const datos = resultados[0]
+                  const especie = resultados[1]
+
+                  item.sprite = datos.sprites.front_default
+                  item.megas = []
+
+                  const promesas = []
+
+                  for (let i = 0; i < especie.varieties.length; i++) {
+                      const variedad = especie.varieties[i].pokemon
+
+                      if (variedad.name.includes('-mega')) {
+                          const mega = { name: variedad.name }
+                          item.megas.push(mega)
+
+                          const promesa = pedir(variedad.url)
+                            .then(d => {
+                                mega.sprite = d.sprites.front_default || d.sprites.other['official-artwork'].front_default
+                            })
+
+                          promesas.push(promesa)
+                      }
+                  }
+
+                  return Promise.all(promesas)
+              })
+        }
+
+        function renderEvoluciones (etapas, idActual) {
+            const contenedor = document.querySelector('#evoluciones')
+
+            let hayMegas = false
+
+            for (let i = 0; i < etapas.length; i++) {
+                for (let j = 0; j < etapas[i].length; j++) {
+                    if (etapas[i][j].megas.length > 0) {
+                        hayMegas = true
+                    }
+                }
+            }
+
+            if (etapas.length === 1 && !hayMegas) {
+                contenedor.textContent = 'Este Pokémon no evoluciona'
+                return
+            }
+
+            let html = '<div class="cadena">'
+
+            for (let i = 0; i < etapas.length; i++) {
+
+                if (i > 0) {
+                    html += '<span class="flecha">→</span>'
+                }
+
+                html += '<div class="etapa">'
+
+                for (let j = 0; j < etapas[i].length; j++) {
+                    const item = etapas[i][j]
+                    const clase = Number(item.id) === idActual ? 'tarjeta actual' : 'tarjeta'
+
+                    html += `
+                        <div class="${clase}">
+                            <img src="${item.sprite}" alt="${item.name}">
+                            <div>${item.name}</div>
+                        </div>
+                    `
+
+                    for (let k = 0; k < item.megas.length; k++) {
+                        const mega = item.megas[k]
+
+                        html += `
+                            <span class="flecha-abajo">↓</span>
+                            <div class="tarjeta mega">
+                                <img src="${mega.sprite}" alt="${mega.name}">
+                                <div>${mega.name}</div>
+                            </div>
+                        `
+                    }
+                }
+
+                html += '</div>'
+            }
+
+            html += '</div>'
+
+            contenedor.innerHTML = html
+        }
+
+        function render (lista) {
+            const tbody = document.querySelector('tbody')
+            tbody.innerHTML = ''
+
+            for (let i = 0; i < lista.length; i++) {
+                const poke = lista[i]
+
+                const fila = document.createElement('tr')
+
+                fila.innerHTML = `
+                    <td>${poke.id}</td>
+                    <td>${poke.name}</td>
+                    <td>${poke.description || ''}</td>
+                    <td>
+                        <img class="sprite-ver" src="${poke.sprite}" alt="${poke.name}" title="Ver">
+                        <button class="btn-eliminar btn-close" aria-label="Eliminar"></button>
+                    </td>
+                `
+
+                fila.querySelector('.sprite-ver')
+                  .addEventListener('click', () => ver(poke))
+
+                fila.querySelector('.btn-eliminar')
+                  .addEventListener('click', () => eliminar(poke.id))
+
+                tbody.appendChild(fila)
+            }
+        }
+
+        /** NO MODIFICAR */
+        window.addEventListener('load', () => {
+            import('https://cdn.jsdelivr.net/npm/bootstrap@6.0.0-alpha.1/dist/js/bootstrap.bundle.min.js')
+                .then(bootstrap => {
+                    window.bootstrap = bootstrap
+
+                    init()
+                })
+
+        /*
+        Victor Adrian Romero Minaya - 67350 - 28/10/26
+
+        PROMPTS:
+
+        Tengo un archivo html llamado dashboard.html necesito que mi java script (dashboard.js), acceda al api, como lo hacen los archivos miercoles.js y miercoles.html, y ahora en dashboard al darle agregar la info la mande al servidor, el servidor responde y se añade a la tabla, nombre numero sprite etc, se claro, simple y eficiente.
+
+        Agrega una excepción para no poder agregar dos pokemon iguales, sencilla sin comandos avanzados.
+
+        Explica tus cambios con codigo linea por linea para ver si todo me quedo claro y logro entender lo que hiciste.
+
+        Ahora agrega una funcion igual simple para eliminar un pokemon de la lista con un boton pequeño en forma de x en la misma columa del sprite sin tocar el HTML.
+
+        Ahora hay que desacoplar el dibujo de los datos, y usar local storage para guardar los datos ingresados, tenemos de ejemplo el ejecutar en la consola del navegador: let objeto = {id:1, name: "bulbasaur", sprite: "httpsblablabla"}
+        render ([objeto, objeto]) para que el método render, recorra un for y dibuje los elementos estructurados por json stringify, recibe algo y eso lo dibuja, basicamente agregar el metodo render y la estructura para json.
+
+        Necesito que agregues una llamada a la url de species url: "https://pokeapi.co/api/v2/pokemon-species/132/" y tambien la del sonido latest: "https://raw.githubusercontent.com/PokeAPI/cries/main/cries/pokemon/latest/132.ogg" para que se muestre la descripcion al clickear al pokemon o mostrarlo igual en la tabla y que se reproduzca el sonido cuando le picas a ver el poke.
+
+        Ahora hay que agregar una solicitud para agregar evoluciones y por cada evolucion lanzar solicitud para sus datos tambien y asi poder ver su cadena evolutiva representada visualmente con flechas, que se vea la cadena de forma ordenada, tiene que ser la cadena completa, si busco a charmeleon tiene que salir charmander y asi.
+
+        Elabora una pagina web simple con un cuadro de texto y un boton; al escribir el nombre de un pokemon y presionar el boton (o ENTER) se hace una solicitud al PokeAPI para obtener su ID, nombre y sprite y desplegarlos; despues se hacen solicitudes adicionales para la descripcion (flavor text) en español y la cadena evolutiva (incluyendo Megaevoluciones). Hay que agregar nuevos elementos, revisa, realiza los cambios y dime que cambios hiciste para ver si es correcto, junta el html, css y js en uno solo, mantenlo simple sin comentarios.
+        */
+        })
+    </script>
+</body>
+</html>
